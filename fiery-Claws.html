@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Fiery Engine</title>
+<style>
+    html, body {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        background: #0b001a;
+    }
+    canvas {
+        display: block;
+    }
+</style>
+</head>
+<body>
+
+<canvas id="canvas"></canvas>
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+let w, h;
+function resize(){
+    w = canvas.width = window.innerWidth;
+    h = canvas.height = window.innerHeight;
+}
+window.addEventListener("resize", resize);
+resize();
+
+let mouse = { x: w/2, y: h/2 };
+window.addEventListener("mousemove", e=>{
+    mouse.x = e.clientX;
+    mouse.y = e.clientY;
+});
+
+let audioLevel = 10;
+
+async function initAudio(){
+    try{
+        const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const analyser = audioCtx.createAnalyser();
+        const source = audioCtx.createMediaStreamSource(stream);
+        source.connect(analyser);
+        analyser.fftSize = 256;
+        const data = new Uint8Array(analyser.frequencyBinCount);
+
+        function updateAudio(){
+            analyser.getByteFrequencyData(data);
+            let sum = 0;
+            for(let i=0;i<data.length;i++){
+                sum += data[i];
+            }
+            audioLevel = sum / data.length / 255;
+            requestAnimationFrame(updateAudio);
+        }
+        updateAudio();
+    }catch(e){
+        console.log("Mic blocked");
+    }
+}
+initAudio();
+
+class Particle{
+    constructor(angle, radius, depth){
+        this.baseAngle = angle;
+        this.radius = radius;
+        this.depth = depth;
+    }
+
+    draw(t){
+        let angle = this.baseAngle + t * 0.4 * (1 + this.depth);
+
+        let distortionX = (mouse.x - w/2) * 0.0008 * this.radius;
+        let distortionY = (mouse.y - h/2) * 0.0008 * this.radius;
+
+        let r = this.radius * (1 + audioLevel * 0.5);
+
+        let x = w/2 + Math.cos(angle) * r + distortionX;
+        let y = h/2 + Math.sin(angle) * r + distortionY;
+
+        let length = 80 + audioLevel * 150;
+
+        let x2 = x + Math.cos(angle) * length;
+        let y2 = y + Math.sin(angle) * length;
+
+        let hue = (t * 40 + this.radius) % 60;
+
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x2, y2);
+
+        ctx.strokeStyle = `hsl(${hue},100%,${50 + audioLevel*20}%)`;
+        ctx.lineWidth = 1.5 + this.depth * 2;
+        ctx.shadowBlur = 15 + audioLevel * 40;
+        ctx.shadowColor = `hsl(${hue},100%,60%)`;
+
+        ctx.stroke();
+    }
+}
+
+const particles = [];
+const layers = 12;
+const count = 40;
+
+for(let l=0;l<layers;l++){
+    for(let i=0;i<count;i++){
+        particles.push(
+            new Particle(
+                (Math.PI*2/count)*i,
+                50 + l*30,
+                l/layers
+            )
+        );
+    }
+}
+
+function animate(t){
+    t *= 0.001;
+
+    ctx.fillStyle = "rgba(11,0,26,0.25)";
+    ctx.fillRect(0,0,w,h);
+
+    particles.forEach(p=>p.draw(t));
+
+    requestAnimationFrame(animate);
+}
+
+animate();
+</script>
+
+</body>
+</html>
